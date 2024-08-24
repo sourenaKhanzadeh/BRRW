@@ -39,6 +39,9 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
 
     EvaluationContext current_eval_context;
     int current_phase_start_g;
+    int beam_width = 1;
+    int current_depth = 0;
+    int max_depth = 1000;
 
     // Statistics
     std::map<int, std::pair<int, int>> d_counts;
@@ -53,7 +56,7 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
     void expand(EvaluationContext &eval_context);
     void reach_state(
         const State &parent, OperatorID op_id, const State &state);
-    SearchStatus ehc();
+    SearchStatus ehcbrrw();
 
 protected:
     virtual void initialize() override;
@@ -65,9 +68,9 @@ public:
         PreferredUsage preferred_usage,
         const std::vector<std::shared_ptr<Evaluator>> &preferred,
         OperatorCost cost_type, int bound, double max_time,
-        const std::string &description, utils::Verbosity verbosity);
-
+        int beam_width, int max_depth, const std::string &description, utils::Verbosity verbosity);
     virtual void print_statistics() const override;
+
 };
 }
 
