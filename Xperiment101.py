@@ -1,5 +1,5 @@
 import os
-import sys
+import argparse
 
 folders = [
     "gripper",
@@ -9,7 +9,7 @@ folders = [
     "satellite",
 ]
 
-beams = [1]
+beams = [3]
 max_depths = [3]
 
 # Construct the base command
@@ -30,12 +30,17 @@ for folder in folders:
                 full_command = f"{command} {search_command}"
                 all_commands.append(full_command)
 
-__BUILD__ = True
+parser = argparse.ArgumentParser()
+parser.add_argument("--build", action="store_true", help="Build the planner before running the experiments.")
+parser.add_argument("--domain", type=int, help="The domain to run the experiments on.")
+
 
 # run command 0
-if __BUILD__:
+if parser.parse_args().build:
+    print("Building the planner.")
     os.system("./build.py")
-    os.system(all_commands[1])
+    os.system(all_commands[parser.parse_args().domain])
 else:
-    os.system(all_commands[1])
+    print(f"Running the experiments for domain {folders[parser.parse_args().domain]}.")
+    os.system(all_commands[parser.parse_args().domain])
 

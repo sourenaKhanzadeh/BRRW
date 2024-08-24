@@ -10,6 +10,7 @@
 #include <set>
 #include <utility>
 #include <vector>
+#include <random>
 
 namespace plugins {
 class Options;
@@ -22,7 +23,7 @@ enum class PreferredUsage {
 };
 
 /*
-  Enforced hill-climbing with deferred evaluation.
+  Enforced hill-climbing-Beam-RRW with deferred evaluation.
 
   TODO: We should test if this lazy implementation really has any benefits over
   an eager one. We hypothesize that both versions need to evaluate and store
@@ -58,9 +59,13 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
         const State &parent, OperatorID op_id, const State &state);
     SearchStatus ehcbrrw();
 
+    OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
+
 protected:
     virtual void initialize() override;
     virtual SearchStatus step() override;
+
+
 
 public:
     EnforcedHillClimbingBRRWSearch(

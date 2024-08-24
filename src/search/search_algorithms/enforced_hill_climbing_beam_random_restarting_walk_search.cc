@@ -190,6 +190,7 @@ SearchStatus EnforcedHillClimbingBRRWSearch::step() {
         return SOLVED;
     }
 
+
     expand(current_eval_context);
     return ehcbrrw();
 }
@@ -200,107 +201,113 @@ SearchStatus EnforcedHillClimbingBRRWSearch::step() {
         std::random_device rd;  // Random number generator
         std::mt19937 gen(rd()); // Seed for randomness
 
-        int restart_count = 0;
-        const int max_restarts = 100; // Set a reasonable limit for restarts
+        int c = max_depth;  // Maximum depth for random walk
+        int B = beam_width; // Beam width for beam search
+        State initial_state = state_registry.get_initial_state();
 
-        while (true) {  // Infinite loop for continuous searching with random selection
+        // Check if the initial state is already the goal state
+        if (check_goal_and_set_plan(initial_state)) {
+            log << "Initial state is the goal state." << endl;
+            return SOLVED;
+        }
 
-            // Remove the best entry from the open list
-            EdgeOpenListEntry entry = open_list->remove_min();
-            StateID parent_state_id = entry.first;
-            OperatorID last_op_id = entry.second;
+        // Beam to store the best states
+        vector<pair<std::shared_ptr<SearchNode>, EvaluationContext>> beam;
 
-            OperatorProxy last_op = task_proxy.get_operators()[last_op_id];
-            State parent_state = state_registry.lookup_state(parent_state_id);
-            SearchNode parent_node = search_space.get_node(parent_state);
+        // Initialize the beam with the initial state
+        EdgeOpenListEntry entry(initial_state.get_id(), OperatorID::no_operator);
+        StateID parent_state_id = entry.first;
+        State parent_state = state_registry.lookup_state(parent_state_id);
+        std::shared_ptr<SearchNode> parent_node = std::make_shared<SearchNode>(search_space.get_node(parent_state));
+        EvaluationContext eval_context(parent_state, &statistics);
 
+        beam.push_back({parent_node, eval_context});
 
+        while (!beam.empty()) {
+            vector<pair<std::shared_ptr<SearchNode>, EvaluationContext>> next_beam;
 
-            // Distance from the start node in this EHC phase
-            int d = parent_node.get_g() - current_phase_start_g + get_adjusted_cost(last_op);
+            // Expand each node in the current beam
+            for (auto &beam_entry : beam) {
+                auto &current_node = beam_entry.first;
+                auto &current_eval_context = beam_entry.second;
 
-            if (parent_node.get_real_g() + last_op.get_cost() >= bound)
-                continue;
+                // Expand the current node
+                for (int i = 0; i < task_proxy.get_operators().size(); ++i) {
+                    OperatorProxy op = task_proxy.get_operators()[i];
+                    OperatorID op_id = OperatorID(op.get_id());
+                    State next_state = state_registry.get_successor_state(current_node->get_state(), op);
+                    statistics.inc_generated();
 
-            // Generate the successor state
-            State successor_state = state_registry.get_successor_state(parent_state, last_op);
-            statistics.inc_generated();
+                    SearchNode next_node = search_space.get_node(next_state);
 
-            SearchNode node = search_space.get_node(successor_state);
+                    if (next_node.is_new()) {
+                        EvaluationContext next_eval_context(next_state, &statistics);
+                        reach_state(current_node->get_state(), op_id, next_state);
+                        statistics.inc_evaluated_states();
 
-            if (node.is_new()) {
-                EvaluationContext eval_context(successor_state, &statistics);
-                reach_state(parent_state, last_op_id, successor_state);
-                statistics.inc_evaluated_states();
+                        if (!next_eval_context.is_evaluator_value_infinite(evaluator.get())) {
+                            next_node.open_new_node(*current_node, op, get_adjusted_cost(op));
 
-                if (eval_context.is_evaluator_value_infinite(evaluator.get())) {
-                    node.mark_as_dead_end();
-                    statistics.inc_dead_ends();
-                    continue;
-                }
+                            if (next_beam.size() < B) {
+                                next_beam.push_back({std::make_shared<SearchNode>(std::move(next_node)), std::move(next_eval_context)});
+                            } else {
+                                // Replace the worst node in the beam if the new node is better
+                                auto worst_node = std::max_element(next_beam.begin(), next_beam.end(),
+                                                                   [](const auto &a, const auto &b) {
+                                                                       return a.first->get_g() < b.first->get_g();
+                                                                   });
 
-                int h = eval_context.get_evaluator_value(evaluator.get());
-                node.open_new_node(parent_node, last_op, get_adjusted_cost(last_op));
+                                if (next_node.get_g() < worst_node->first->get_g()) {
+                                    // Replace the worst node in the beam with the next node
+                                    worst_node->first.~shared_ptr();
+                                    worst_node->second.~EvaluationContext();
+                                    new (&worst_node->first) std::shared_ptr<SearchNode>(std::make_shared<SearchNode>(std::move(next_node)));
+                                    new (&worst_node->second) EvaluationContext(std::move(next_eval_context));
+                                }
+                            }
 
-                current_depth++;
-
-                // Restart when the maximum depth is reached
-                if (current_depth >= max_depth) {
-                    log << "Maximum depth reached, performing random restart." << endl;
-                    restart_count++;
-
-                    if (restart_count >= max_restarts) {
-                        log << "Maximum number of restarts reached, terminating search." << endl;
-                        return FAILED;
-                    }
-
-                    initialize();
-                    current_depth = 0;  // Reset depth counter after restart
-                    continue;
-                }
-
-                // Check if we have reached a goal state
-                if (check_goal_and_set_plan(successor_state)) {
-                    return SOLVED;  // Goal found
-                }
-
-                // Perform Beam Search: limit the expansion to beam width
-                if (current_depth % beam_width == 0) {
-                    // Here you can add logic to randomly shuffle or select a subset of nodes
-                    // if the beam width is reached, or perform a random walk.
-                    std::vector<EdgeOpenListEntry> entries_to_expand;
-
-                    // Collect entries to expand within the beam width
-                    for (int i = 0; i < beam_width && !open_list->empty(); ++i) {
-                        entries_to_expand.push_back(open_list->remove_min());
-                    }
-
-                    // Randomly expand one of the selected entries
-                    std::shuffle(entries_to_expand.begin(), entries_to_expand.end(), gen);
-                    for (const auto &entry : entries_to_expand) {
-                        // Handle the expansion of each node here
-                        // For each entry, apply the operator, generate successor states, and so on
+                            // Check if the goal state is found
+                            if (check_goal_and_set_plan(next_state)) {
+                                log << "Goal state found." << endl;
+                                return SOLVED;
+                            }
+                        }
                     }
                 }
             }
-            if (open_list->empty()) {
-                log << "Open list is empty, performing random restart." << endl;
-                restart_count++;
 
-                if (restart_count >= max_restarts) {
-                    log << "Maximum number of restarts reached, terminating search." << endl;
-                    return FAILED;
-                }
-
-                initialize();  // Random restart when open list is empty
-                current_depth = 0;  // Reset depth counter
-                continue;  // Restart the loop after initialization
+            // Randomly select a node from the beam to continue searching
+            if (!next_beam.empty()) {
+                std::uniform_int_distribution<int> dist(0, next_beam.size() - 1);
+                int selected_index = dist(gen);
+                auto selected_node = next_beam[selected_index];
+                current_eval_context = std::move(selected_node.second);
+                beam = {std::move(selected_node)};
+            } else {
+                log << "Beam is empty. Restarting search." << endl;
+                return IN_PROGRESS;
             }
         }
 
-        log << "No solution - FAILED" << endl;
+        log << "No solution found - FAILED" << endl;
         return FAILED;
     }
+
+
+    OperatorID EnforcedHillClimbingBRRWSearch::sample_random_operator(const State &state, std::mt19937 &rng) {
+        vector<OperatorID> applicable_ops;
+        successor_generator.generate_applicable_ops(state, applicable_ops);
+        std::uniform_int_distribution<int> dist(0, applicable_ops.size() - 1);
+        return applicable_ops[dist(rng)];
+    }
+
+
+
+
+
+
+
+
 
 
 
