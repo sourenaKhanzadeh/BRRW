@@ -61,6 +61,8 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
 
     OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
 
+    SearchStatus random_walk_to_subgoal(int subgoal_h);
+
 protected:
     virtual void initialize() override;
     virtual SearchStatus step() override;

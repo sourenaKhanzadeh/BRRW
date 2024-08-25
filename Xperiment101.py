@@ -9,8 +9,8 @@ folders = [
     "satellite",
 ]
 
-beams = [3]
-max_depths = [3]
+beams = [1]
+max_depths = [10]
 
 # Construct the base command
 base_command = "./fast-downward.py misc/tests/benchmarks/{}/domain.pddl misc/tests/benchmarks/{}/{}"
