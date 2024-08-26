@@ -52,6 +52,8 @@ public:
     void mark_as_dead_end();
 
     void dump(const TaskProxy &task_proxy, utils::LogProxy &log) const;
+
+
 };
 
 

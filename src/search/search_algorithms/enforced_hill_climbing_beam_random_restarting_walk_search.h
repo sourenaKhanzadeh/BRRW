@@ -41,8 +41,10 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
     EvaluationContext current_eval_context;
     int current_phase_start_g;
     int beam_width = 1;
-    int current_depth = 0;
     int max_depth = 1000;
+
+
+    std::vector<StateID> path_to_minima;
 
     // Statistics
     std::map<int, std::pair<int, int>> d_counts;
@@ -61,7 +63,13 @@ class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
 
     OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
 
-    SearchStatus random_walk_to_subgoal(int subgoal_h);
+    SearchStatus random_restart_walk();
+    SearchStatus beam_search(std::mt19937 &rng);
+    SearchStatus ehc_random_walk_search();
+    SearchStatus ehc();
+
+    long luby_sequence(long n);
+
 
 protected:
     virtual void initialize() override;
