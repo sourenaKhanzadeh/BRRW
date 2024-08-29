@@ -23,7 +23,25 @@ class SearchNode {
                        const OperatorProxy &parent_op,
                        int adjusted_cost);
 public:
+    // Constructor
     SearchNode(const State &state, SearchNodeInfo &info);
+
+    // Copy constructor (if needed)
+    SearchNode(const SearchNode &other) : state(other.state), info(other.info) {}
+
+    // Assignment operator
+    SearchNode& operator=(const SearchNode &other) {
+        if (this == &other) {
+            return *this;  // Handle self-assignment
+        }
+
+        // Copy the state and info from the other object
+        state = other.state;
+        info = other.info;
+
+        // Return the current object
+        return *this;
+    }
 
     const State &get_state() const;
 
@@ -52,9 +70,8 @@ public:
     void mark_as_dead_end();
 
     void dump(const TaskProxy &task_proxy, utils::LogProxy &log) const;
-
-
 };
+
 
 
 class SearchSpace {

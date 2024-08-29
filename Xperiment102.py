@@ -95,6 +95,7 @@ parser.add_argument("--ehc", action="store_true", help="Run the experiments with
 parser.add_argument("--all", action="store_true", help="Run the experiments for all domains and problems.")
 parser.add_argument("--beam", type=int, help="The beam width to use for the experiments.")
 parser.add_argument("--depth", type=int, help="The max depth to use for the experiments.")
+parser.add_argument("--luby", action="store_true", help="Run the experiments with Luby sequence.")
 
 args = parser.parse_args()
 
@@ -146,8 +147,11 @@ if args.domain is not None and args.problem is not None and args.task is not Non
         print(f"Problem completed: {two_digit_problem}")
     else:
         two_digit_problem = f"{args.problem:02d}"
-        if args.ehc:
+
+        if args.ehc and not args.luby:
             command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehc(add(), cost_type=normal, bound=infinity, max_time=10)'"
+        elif args.luby:
+            command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=60, beam_width={args.beam}, max_depth={args.depth}, restart_strategy=\"luby\")'"
         else:
             command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=infinity, beam_width={args.beam}, max_depth={args.depth})'"
         os.system(command)
