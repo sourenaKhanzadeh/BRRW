@@ -151,9 +151,9 @@ if args.domain is not None and args.problem is not None and args.task is not Non
         if args.ehc and not args.luby:
             command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehc(add(), cost_type=normal, bound=infinity, max_time=10)'"
         elif args.luby:
-            command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=60, beam_width={args.beam}, max_depth={args.depth}, restart_strategy=\"luby\")'"
+            command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=5, beam_width={args.beam}, max_depth={args.depth}, restart_strategy=\"luby\")'"
         else:
-            command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=infinity, beam_width={args.beam}, max_depth={args.depth})'"
+            command = f"./fast-downward.py misc/tests/benchmarks/{folders[args.domain]}/domain.pddl misc/tests/benchmarks/{folders[args.domain]}/task{two_digit_problem}.pddl --search 'ehcbrrw(add(), cost_type=normal, bound=infinity, max_time=5, beam_width={args.beam}, max_depth={args.depth})'"
         os.system(command)
 
         print(f"Task completed: {args.task}")

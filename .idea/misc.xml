@@ -6,4 +6,7 @@
   <component name="CMakeWorkspace" PROJECT_DIR="$PROJECT_DIR$/src">
     <contentRoot DIR="$PROJECT_DIR$" />
   </component>
+  <component name="PythonCompatibilityInspectionAdvertiser">
+    <option name="version" value="3" />
+  </component>
 </project>

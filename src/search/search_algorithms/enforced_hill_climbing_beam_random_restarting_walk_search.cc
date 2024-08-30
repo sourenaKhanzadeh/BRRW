@@ -275,7 +275,17 @@ namespace enforced_hill_climbing_beam_rrw_search {
         MAX_TIMESTEP <<= 63;
         if (beam_width == 1){
 
+            // start a timer
+            auto start = std::chrono::high_resolution_clock::now();
+
             do {
+                // check time exceeds max_time
+                auto end = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
+                if (elapsed.count() > max_time) {
+                    cout << "Time limit exceeded" << endl;
+                    return FAILED;
+                }
                 uint64_t restart_length;
                 if(r_strategy){
                     restart_length = r_strategy->next_sequence_value();
@@ -325,7 +335,14 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
         }else {
             // beam rrw
+            auto start = std::chrono::high_resolution_clock::now();
             do {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
+                if (elapsed.count() > max_time) {
+                    cout << "Time limit exceeded" << endl;
+                    return FAILED;
+                }
                 uint64_t restart_length;
                 if(r_strategy){
                     restart_length = r_strategy->next_sequence_value();
