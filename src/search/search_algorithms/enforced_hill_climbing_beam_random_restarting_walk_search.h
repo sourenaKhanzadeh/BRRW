@@ -4,6 +4,7 @@
 #include "../evaluation_context.h"
 #include "../open_list.h"
 #include "../search_algorithm.h"
+#include "../utils/countdown_timer.h"
 
 #include <map>
 #include <memory>
@@ -67,6 +68,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
         int current_phase_start_g;
         int beam_width;
         int max_depth;
+        int luby_start_value;
 
 
         std::map<int, std::pair<int, int>> d_counts;
@@ -95,6 +97,8 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
         long luby_sequence(long n);
 
+        utils::CountdownTimer *timer;
+
     protected:
         virtual void initialize() override;
         virtual SearchStatus step() override;
@@ -105,10 +109,11 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 PreferredUsage preferred_usage,
                 const std::vector<std::shared_ptr<Evaluator>> &preferred,
                 OperatorCost cost_type, int bound, double max_time,
-                int beam_width, int max_depth, const std::string & restart_strategy,
+                int beam_width, int max_depth, const std::string & restart_strategy, int luby_start_value,
                 const std::string &description, utils::Verbosity verbosity);
 
         virtual void print_statistics() const override;
+        virtual void search() override;
     };
 }
 
