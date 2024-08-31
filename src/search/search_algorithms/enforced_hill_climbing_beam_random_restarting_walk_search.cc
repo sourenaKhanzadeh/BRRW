@@ -426,7 +426,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
                     current_eval_context = EvaluationContext(beam.front(), &statistics);
                     timestep++;
-                    log << "[Timestep] " << timestep << " completed." << endl;
+//                    log << "[Timestep] " << timestep << " completed." << endl;
                 }
             } while (current_hvalue >= current_eval_context.get_evaluator_value(evaluator.get()));
 
