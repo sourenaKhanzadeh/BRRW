@@ -8,3 +8,4 @@ __pycache__/
 /src/cmake-build-debug/
 */.venv/
 .venv/
+data/

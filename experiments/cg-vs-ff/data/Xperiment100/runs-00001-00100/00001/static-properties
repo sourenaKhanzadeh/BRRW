@@ -1,0 +1,29 @@
+{
+  "algorithm": "ehcbrrw",
+  "build_options": [],
+  "component_options": [
+    "--search",
+    "ehcbrrw(add(), max_depth=100, beam_width=10, restart_strategy=\"luby\")"
+  ],
+  "domain": "tpp",
+  "driver_options": [
+    "--validate",
+    "--overall-time-limit",
+    "30m",
+    "--overall-memory-limit",
+    "3584M",
+    "--overall-time-limit",
+    "5m"
+  ],
+  "experiment_name": "Xperiment100",
+  "global_revision": "9c52a59874d5fe5b1c4d3147084b7594916e559b",
+  "id": [
+    "ehcbrrw",
+    "tpp",
+    "p01.pddl"
+  ],
+  "local_revision": "main",
+  "problem": "p01.pddl",
+  "repo": "/workspaces/ubuntu/BRRW",
+  "run_dir": "runs-00001-00100/00001"
+}

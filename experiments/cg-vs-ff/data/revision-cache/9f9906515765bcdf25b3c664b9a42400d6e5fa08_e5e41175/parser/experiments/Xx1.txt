@@ -1,0 +1,4 @@
+python3 Xperiment102.py --domain 1 --problem 5 --task -1 --beam 1 --depth 100
+python3 Xperiment102.py --domain 1 --problem 10 --task -1 --beam 1 --depth 100
+python3 Xperiment102.py --domain 1 --problem 15 --task -1 --beam 1 --depth 100
+python3 Xperiment102.py --domain 1 --problem 20 --task -1 --beam 1 --depth 100

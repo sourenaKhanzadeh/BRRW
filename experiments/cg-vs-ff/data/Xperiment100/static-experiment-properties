@@ -1,0 +1,12 @@
+{
+  "algorithms": [
+    "ehcbrrw"
+  ],
+  "experiment_file": "Xperiment100.py",
+  "runs": 30,
+  "suite": {
+    "/workspaces/ubuntu/benchmarks": [
+      "tpp"
+    ]
+  }
+}
