@@ -10,25 +10,18 @@ import custom_parser
 
 REPO = project.get_repo_base()
 BENCHMARKS_DIR = os.path.join(REPO, os.pardir, "benchmarks")
-SUITE = ["tpp:p01.pddl"]
+SUITE = ["tpp"]
 ENV = project.LocalEnvironment(processes=2)
 CONFIGS = [
-    (f"{index:02d}-{h_nick}", ["--search", f"eager_greedy([{h}])"])
-    for index, (h_nick, h) in enumerate(
-        [
-            ("cg", "cg(transform=adapt_costs(one))"),
-            ("ff", "ff(transform=adapt_costs(one))"),
-        ],
-        start=1,
-    )
+    ("ehcbrrw", ["--search", 'ehcbrrw(add(), max_depth=100, beam_width=10, restart_strategy=\"luby\")']),
 ]
 
 # CONFIGS = [
 #     ("simple_search", ["--search", "astar(lmcut())"])
 # ]
 BUILD_OPTIONS = []
-# DRIVER_OPTIONS = ["--overall-time-limit", "5m", "--overall-memory-limit", "1024TB"]
-DRIVER_OPTIONS = []
+DRIVER_OPTIONS = ["--overall-time-limit", "5m"]
+# DRIVER_OPTIONS = []
 
 REV_NICKS = [
     ("main", ""),

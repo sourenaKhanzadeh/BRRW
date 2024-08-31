@@ -1,1 +1,1 @@
-../../../../../../../benchmarks/tpp/p01.pddl
+../../../../../../../benchmarks/tpp/p02.pddl

@@ -1,13 +1,12 @@
 {
   "algorithms": [
-    "01-cg",
-    "02-ff"
+    "ehcbrrw"
   ],
   "experiment_file": "Xperiment100.py",
-  "runs": 2,
+  "runs": 30,
   "suite": {
-    "/Users/sourenakhanzadeh/programming/c++/downward-projects/benchmarks": [
-      "tpp:p01.pddl"
+    "/workspaces/ubuntu/benchmarks": [
+      "tpp"
     ]
   }
 }
