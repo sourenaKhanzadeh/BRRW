@@ -1,0 +1,12 @@
+INFO     planner time limit: 1800s
+INFO     planner memory limit: 3584 MB
+
+INFO     Running translator.
+INFO     translator stdin: None
+INFO     translator time limit: 1799s
+INFO     translator memory limit: 3584 MB
+INFO     translator command line string: /Users/sourenakhanzadeh/programming/c++/downward-projects/BRRW/experiments/cg-vs-ff/.venv/bin/python3 /Users/sourenakhanzadeh/programming/c++/downward-projects/BRRW/experiments/cg-vs-ff/data/Xperiment100/code-9f9906515765bcdf25b3c664b9a42400d6e5fa08_e5e41175/builds/release/bin/translate/translate.py domain.pddl problem.pddl --sas-file output.sas
+translate exit code: 37
+
+Driver aborting after translate
+INFO     Planner time: 0.02s

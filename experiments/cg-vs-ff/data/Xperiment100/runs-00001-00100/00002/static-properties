@@ -1,0 +1,27 @@
+{
+  "algorithm": "02-ff",
+  "build_options": [],
+  "component_options": [
+    "--search",
+    "eager_greedy([ff(transform=adapt_costs(one))])"
+  ],
+  "domain": "tpp",
+  "driver_options": [
+    "--validate",
+    "--overall-time-limit",
+    "30m",
+    "--overall-memory-limit",
+    "3584M"
+  ],
+  "experiment_name": "Xperiment100",
+  "global_revision": "9f9906515765bcdf25b3c664b9a42400d6e5fa08",
+  "id": [
+    "02-ff",
+    "tpp",
+    "p01.pddl"
+  ],
+  "local_revision": "main",
+  "problem": "p01.pddl",
+  "repo": "/Users/sourenakhanzadeh/programming/c++/downward-projects/BRRW",
+  "run_dir": "runs-00001-00100/00002"
+}

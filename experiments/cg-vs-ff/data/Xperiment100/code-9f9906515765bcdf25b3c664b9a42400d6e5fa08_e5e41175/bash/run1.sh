@@ -1,0 +1,17 @@
+python3 Xperiment102.py --domain 0 --problem 01 --task 28
+python3 Xperiment102.py --domain 0 --problem 02 --task 0
+python3 Xperiment102.py --domain 0 --problem 03 --task 7
+python3 Xperiment102.py --domain 0 --problem 04 --task 10
+python3 Xperiment102.py --domain 0 --problem 05 --task 15
+python3 Xperiment102.py --domain 0 --problem 06 --task 21
+python3 Xperiment102.py --domain 0 --problem 07 --task 22
+python3 Xperiment102.py --domain 0 --problem 10 --task 20
+python3 Xperiment102.py --domain 0 --problem 11 --task 23
+python3 Xperiment102.py --domain 0 --problem 12 --task 11
+python3 Xperiment102.py --domain 0 --problem 13 --task 14
+python3 Xperiment102.py --domain 0 --problem 15 --task 6
+python3 Xperiment102.py --domain 0 --problem 21 --task 27
+python3 Xperiment102.py --domain 0 --problem 22 --task 3
+python3 Xperiment102.py --domain 0 --problem 23 --task 4
+python3 Xperiment102.py --domain 0 --problem 26 --task 18
+python3 Xperiment102.py --domain 0 --problem 30 --task 19
