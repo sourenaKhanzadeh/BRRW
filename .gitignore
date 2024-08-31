@@ -6,4 +6,5 @@ __pycache__/
 /misc/.tox/
 /misc/autodoc/downward-xmlrpc.secret
 /src/cmake-build-debug/
-
+*/.venv/
+.venv/
