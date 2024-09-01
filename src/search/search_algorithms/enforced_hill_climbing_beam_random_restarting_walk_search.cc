@@ -211,6 +211,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
     SearchStatus EnforcedHillClimbingBRRWSearch::ehc() {
         std::mt19937 rng(std::chrono::system_clock::now().time_since_epoch().count());
+        // Do a single EHC phase basically one step looke ahead
         while (!open_list->empty()) {
             EdgeOpenListEntry entry = open_list->remove_min();
             StateID parent_state_id = entry.first;
@@ -263,13 +264,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 } else {
 //                    expand(eval_context);
 
-//                    if(beam_width == 1) {
-//                        std::mt19937 rng(std::chrono::system_clock::now().time_since_epoch().count());
-//                        return random_restart_walk();
-//                    } else {
-//                        std::mt19937 rng(std::chrono::system_clock::now().time_since_epoch().count());
-//                        return beam_search(rng);
-//                    }
                 }
             }
         }
@@ -347,6 +341,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
         }else {
             // beam rrw
             vector<State> beam;
+            // Initialize the beam with the current state
             beam.push_back(current_eval_context.get_state());
 
             do {
@@ -362,6 +357,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 while (timestep < restart_length) {
                     vector<pair<int, State>> evaluated_states;
 
+                    // Explore each beam node
                     for (const State &current_state : beam) {
                         vector<OperatorID> ops;
                         successor_generator.generate_applicable_ops(current_state, ops);
@@ -404,18 +400,20 @@ namespace enforced_hill_climbing_beam_rrw_search {
                         break;
                     }
 
+                    // Sort the evaluated states by heuristic value
                     std::sort(evaluated_states.begin(), evaluated_states.end(),
                               [](const pair<int, State> &a, const pair<int, State> &b) {
                                   return a.first < b.first;
                               });
 
                     beam.clear();
+                    // Add the best states to the beam
                     for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
                         beam.push_back(std::move(evaluated_states[i].second));
                     }
 
                     int best_hvalue = evaluated_states.front().first;
-
+                    // Check if we have found a better state
                     if (best_hvalue < current_hvalue) {
                         log << "[Improvement] Found a better state with heuristic value: " << best_hvalue << endl;
                         current_eval_context = EvaluationContext(beam.front(), &statistics);
@@ -423,6 +421,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                         open_list->clear();
                         return IN_PROGRESS;
                     }
+
 
                     current_eval_context = EvaluationContext(beam.front(), &statistics);
                     timestep++;
