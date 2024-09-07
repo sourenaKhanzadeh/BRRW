@@ -47,6 +47,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
             const vector<shared_ptr<Evaluator>> &preferred,
             OperatorCost cost_type, int bound, double max_time,
             int beam_width, int max_depth, const string &restart_strategy, int luby_start_value,
+            bool cluster,
             const string &description, utils::Verbosity verbosity)
             : SearchAlgorithm(cost_type, bound, max_time, description, verbosity),
               evaluator(h),
@@ -59,7 +60,8 @@ namespace enforced_hill_climbing_beam_rrw_search {
               beam_width(beam_width),
               max_depth(max_depth),
               restart_strategy(restart_strategy),
-              luby_start_value(luby_start_value) {
+              luby_start_value(luby_start_value),
+              cluster(cluster) {
 
         assert(beam_width >= 1);
         assert(max_depth >= 3);
@@ -334,14 +336,13 @@ namespace enforced_hill_climbing_beam_rrw_search {
             } while (hvalue >= current_hvalue);
 
         }else {
-            // beam rrw
-    bool cluster = false;
+   // beam rrw
+bool cluster = false;
+State initial_beam_state = current_eval_context.get_state();
+vector<State> beam;
+beam.push_back(current_eval_context.get_state());
 
-            do {
-    vector<State> beam;
-    // Initialize the beam with the current state
-    beam.push_back(current_eval_context.get_state());
-    bool initial = true;
+do {
     uint64_t restart_length;
     
     // Determine the restart length
@@ -355,6 +356,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
     while (timestep < restart_length) {
         vector<pair<int, State>> evaluated_states;
+        vector<pair<State, State>> cluster_st;
 
         // Explore each beam node
         for (const State &current_state : beam) {
@@ -366,10 +368,9 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 continue;
             }
 
-            // Initial state handling
-            if (initial) {
-                // Explore each beam node by selecting a random successor
-                for (int i = 0; i < beam_width && !ops.empty(); ++i) {  // Fixed the uninitialized loop variable
+            if (cluster) {
+                // Cluster mode: Select random successors from each beam node
+                for (int i = 0; i < beam_width && !ops.empty(); ++i) {
                     std::uniform_int_distribution<int> dist(0, ops.size() - 1);
                     OperatorID random_op_id = ops[dist(rng)];
                     const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
@@ -390,63 +391,12 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
                     int h_value = new_eval_context.get_evaluator_value(evaluator.get());
                     evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
+                    cluster_st.push_back(make_pair(current_state, next_state));
 
                     ops.erase(ops.begin() + dist(rng));
                 }
-                
-                // After exploring initial states, switch `initial` to false
-                initial = false;
-
-                // Clear the beam and update it with the best evaluated states
-                beam.clear();
-                for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
-                    beam.push_back(std::move(evaluated_states[i].second));
-                }
-
-                // Check if we found a better state
-                if (!evaluated_states.empty()) {  // Make sure the evaluated states are not empty
-                    int best_hvalue = evaluated_states.front().first;
-                    if (best_hvalue < current_hvalue) {
-                        log << "[Improvement] Found a better state with heuristic value: " << best_hvalue << endl;
-                        current_eval_context = EvaluationContext(beam.front(), &statistics);
-                        current_hvalue = best_hvalue;
-                        open_list->clear();
-                        return IN_PROGRESS;
-                    }
-                }
-
-                continue;  // Skip the rest of this loop and restart exploration
-            }
-
-            // Non-initial state exploration
-            // Explore each beam node by selecting a random successor
-            for (int i = 0; i < 1 && !ops.empty() && cluster; ++i) {
-                std::uniform_int_distribution<int> dist(0, ops.size() - 1);
-                OperatorID random_op_id = ops[dist(rng)];
-                const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
-                State next_state = state_registry.get_successor_state(current_state, random_op);
-
-                reach_state(current_state, random_op_id, next_state);
-
-                SearchNode successor_node = search_space.get_node(next_state);
-                SearchNode parent_node = search_space.get_node(current_state);
-                if (successor_node.is_new()) {
-                    successor_node.open_new_node(parent_node, random_op, parent_node.get_g() + get_adjusted_cost(random_op));
-                }
-
-                EvaluationContext new_eval_context(next_state, &statistics);
-                statistics.inc_evaluated_states();
-                statistics.inc_expanded();
-                statistics.inc_generated();
-
-                int h_value = new_eval_context.get_evaluator_value(evaluator.get());
-                evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
-
-                ops.erase(ops.begin() + dist(rng));
-            }
-
-            // for non cluster mode expand all successors and randomly select one
-            if (!cluster) {
+            } else {
+                // Non-cluster mode: Expand all successors
                 for (OperatorID op_id : ops) {
                     const OperatorProxy op = task_proxy.get_operators()[op_id];
                     State next_state = state_registry.get_successor_state(current_state, op);
@@ -469,7 +419,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 }
             }
         }
-
         // If no valid successors are found, restart
         if (evaluated_states.empty()) {
             log << "[Restart] No valid successors found. Restarting EHC from the current context." << endl;
@@ -477,38 +426,52 @@ namespace enforced_hill_climbing_beam_rrw_search {
             break;
         }
 
-
-        // Clear and update the beam with the best evaluated states
-        beam.clear();
-        for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
-            beam.push_back(std::move(evaluated_states[i].second));
+        if (cluster) {
+            beam.clear();
+            // Add one state from each cluster until beam_width is reached
+            size_t cluster_idx = 0;
+            while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
+                beam.push_back(cluster_st[cluster_idx].second);
+                cluster_idx++;
+            }
+        } else {
+            // Non-cluster: Clear and update the beam with best states
+            beam.clear();
+            std::sort(evaluated_states.begin(), evaluated_states.end(),
+                      [](const pair<int, State> &a, const pair<int, State> &b) {
+                          return a.first < b.first;
+                      });
+            for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
+                beam.push_back(std::move(evaluated_states[i].second));
+            }
         }
 
         // Check if we found a better state
-        if (!evaluated_states.empty()) {  // Ensure that evaluated states are not empty
-            // Sort the evaluated states by heuristic value
+        if (!evaluated_states.empty()) {
             std::sort(evaluated_states.begin(), evaluated_states.end(),
-                    [](const pair<int, State> &a, const pair<int, State> &b) {
-                        return a.first < b.first;
-                    });
+                      [](const pair<int, State> &a, const pair<int, State> &b) {
+                          return a.first < b.first;
+                      });
             int best_hvalue = evaluated_states.front().first;
             if (best_hvalue < current_hvalue) {
                 log << "[Improvement] Found a better state with heuristic value: " << best_hvalue << endl;
-                current_eval_context = EvaluationContext(beam.front(), &statistics);
+                current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
                 current_hvalue = best_hvalue;
                 open_list->clear();
                 return IN_PROGRESS;
             }
         }
-        std::sort(evaluated_states.begin(), evaluated_states.end(),
-                [](const pair<int, State> &a, const pair<int, State> &b) {
-                    return a.first < b.first;
-                });
 
         current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
         timestep++;
     }
+
+    // Reset the beam to initial state after a restart
+    beam.clear();
+    beam.push_back(initial_beam_state);
+
 } while (hvalue >= current_hvalue);
+
 
 
 
@@ -667,6 +630,11 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     "Initial value for the Luby sequence.",
                     "1");
 
+            add_option<bool>(
+                    "cluster",
+                    "Cluster mode for beam search.",
+                    "false");
+
             add_search_algorithm_options_to_feature(*this, "ehcbrrw");
         }
 
@@ -688,6 +656,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     opts.get<int>("max_depth"),
                     opts.get<std::string>("restart_strategy"),  // Use the enum here
                     opts.get<int>("luby_start_value"),
+                    opts.get<bool>("cluster"),
                     opts.get<std::string>("description"),
                     opts.get<utils::Verbosity>("verbosity"));
         }
