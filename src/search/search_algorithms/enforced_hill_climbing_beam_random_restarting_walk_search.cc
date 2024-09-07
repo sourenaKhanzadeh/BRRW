@@ -282,8 +282,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
             r_strategy->reset_sequence();
         }
 
-        uint64_t MAX_TIMESTEP = 1;
-        MAX_TIMESTEP <<= 63;
         if (beam_width == 1){
 
 
@@ -293,9 +291,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     restart_length = r_strategy->next_sequence_value();
                 }else{
                     restart_length = max_depth;
-                }
-                if (restart_length < (MAX_TIMESTEP >> 1)) {
-                    restart_length = restart_length << 1;  // scale by 2 because we know depth 1 successors are no good
                 }
                 uint64_t timestep = 0;
                 eval_context = current_eval_context;
