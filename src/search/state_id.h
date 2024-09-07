@@ -35,7 +35,21 @@ public:
     bool operator!=(const StateID &other) const {
         return !(*this == other);
     }
+
+    int get_value() const {
+        return value;
+    }
 };
+
+// Custom hash function for StateID
+namespace std {
+    template<>
+    struct hash<StateID> {
+        std::size_t operator()(const StateID &s) const noexcept {
+            return std::hash<int>{}(s.get_value());  // Assuming StateID can be hashed by its `id`
+        }
+    };
+}
 
 
 #endif
