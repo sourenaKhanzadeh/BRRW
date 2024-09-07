@@ -69,6 +69,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
         int beam_width;
         int max_depth;
         int luby_start_value;
+        bool cluster;
 
 
         std::map<int, std::pair<int, int>> d_counts;
@@ -110,6 +111,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 const std::vector<std::shared_ptr<Evaluator>> &preferred,
                 OperatorCost cost_type, int bound, double max_time,
                 int beam_width, int max_depth, const std::string & restart_strategy, int luby_start_value,
+                bool cluster,
                 const std::string &description, utils::Verbosity verbosity);
 
         virtual void print_statistics() const override;
