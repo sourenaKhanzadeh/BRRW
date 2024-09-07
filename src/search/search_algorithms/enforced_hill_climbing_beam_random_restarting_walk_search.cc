@@ -337,7 +337,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
         }else {
    // beam rrw
-bool cluster = false;
 State initial_beam_state = current_eval_context.get_state();
 vector<State> beam;
 beam.push_back(current_eval_context.get_state());
