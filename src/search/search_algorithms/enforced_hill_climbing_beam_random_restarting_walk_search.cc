@@ -276,7 +276,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
         int current_hvalue = current_eval_context.get_evaluator_value(evaluator.get());
         EvaluationContext eval_context = current_eval_context;
         int hvalue = current_hvalue;
-        cout << "Entering RWs(" << beam_width << "): to beat: " << hvalue << endl;
+        std::cout << "Entering RWs(" << beam_width << "): to beat: " << hvalue << endl;
         //int num_restarts = 1;
         if(r_strategy){
             r_strategy->reset_sequence();
@@ -300,7 +300,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     successor_generator.generate_applicable_ops(eval_context.get_state(), ops);
 
                     if (ops.size() == 0) {
-                        cout << "Pruned all operators -- doing a pseudo-restart" << endl;
+                        std::cout << "Pruned all operators -- doing a pseudo-restart" << endl;
                         eval_context = current_eval_context;
                     } else {
                         std::uniform_int_distribution<int> dist(0, ops.size() - 1);
