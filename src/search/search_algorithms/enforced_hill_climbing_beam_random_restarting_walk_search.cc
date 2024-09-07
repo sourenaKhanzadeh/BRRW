@@ -391,6 +391,7 @@ do {
                 }
             } else {
                 // Non-cluster mode: Expand all successors
+                shuffle(ops.begin(), ops.end(), rng);
                 for (OperatorID op_id : ops) {
                     const OperatorProxy op = task_proxy.get_operators()[op_id];
                     State next_state = state_registry.get_successor_state(current_state, op);
@@ -422,19 +423,45 @@ do {
 
         if (cluster) {
             beam.clear();
+            unordered_set<StateID> seen_states;  // To track added states by their ID for fast lookup
+            seen_states.reserve(beam_width);
+
             // Add one state from each cluster until beam_width is reached
             size_t cluster_idx = 0;
+
+            // Add unique states from clusters
             while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
-                beam.push_back(cluster_st[cluster_idx].second);
+                State next_state = cluster_st[cluster_idx].second;
+                StateID next_state_id = next_state.get_id();
+                
+                // Add state if it hasn't been added before
+                if (seen_states.insert(next_state_id).second) {
+                    beam.push_back(std::move(next_state));
+                }
                 cluster_idx++;
             }
+
+            // If beam is not full, add random unique states from evaluated_states
+            std::uniform_int_distribution<int> dist(0, evaluated_states.size() - 1);
+            while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
+                State next_state = evaluated_states[dist(rng)].second;
+                StateID next_state_id = next_state.get_id();
+                
+                // Only add if it's a unique state
+                if (seen_states.insert(next_state_id).second) {
+                    beam.push_back(std::move(next_state));
+                }
+
+                cluster_idx++;
+            }
+
         } else {
             // Non-cluster: Clear and update the beam with best states
             beam.clear();
-            std::sort(evaluated_states.begin(), evaluated_states.end(),
-                      [](const pair<int, State> &a, const pair<int, State> &b) {
-                          return a.first < b.first;
-                      });
+            // std::sort(evaluated_states.begin(), evaluated_states.end(),
+            //           [](const pair<int, State> &a, const pair<int, State> &b) {
+            //               return a.first < b.first;
+            //           });
             for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
                 beam.push_back(std::move(evaluated_states[i].second));
             }
