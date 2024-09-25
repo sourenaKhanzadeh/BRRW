@@ -57,13 +57,15 @@ namespace enforced_hill_climbing_beam_rrw_search {
     };
 
     class EnforcedHillClimbingBRRWSearch : public SearchAlgorithm {
-        std::unique_ptr<EdgeOpenList> open_list;
+        shared_ptr<utils::RandomNumberGenerator> rng;
+        std::unique_ptr<StateOpenList> open_list;
         std::shared_ptr<Evaluator> evaluator;
         std::vector<std::shared_ptr<Evaluator>> preferred_operator_evaluators;
         std::set<Evaluator *> path_dependent_evaluators;
         bool use_preferred;
         PreferredUsage preferred_usage;
 
+        bool improvement_found;
         EvaluationContext current_eval_context;
         int current_phase_start_g;
         int beam_width;
@@ -79,22 +81,21 @@ namespace enforced_hill_climbing_beam_rrw_search {
         std::unique_ptr<RestartStrategy> r_strategy;
         std::string restart_strategy;
 
-        void insert_successor_into_open_list(
-                const EvaluationContext &eval_context,
+        bool insert_successor_into_open_list(
+                EvaluationContext &eval_context,
                 int parent_g,
                 OperatorID op_id,
                 bool preferred);
-        void expand(EvaluationContext &eval_context);
+        bool expand(EvaluationContext &eval_context);
         void reach_state(
                 const State &parent, OperatorID op_id, const State &state);
-        SearchStatus ehcbrrw();
+        SearchStatus rrw();
+        SearchStatus ehc();
 
         OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
 
         SearchStatus random_restart_walk();
         SearchStatus beam_search(std::mt19937 &rng);
-        SearchStatus ehc_random_walk_search();
-        SearchStatus ehc();
 
         long luby_sequence(long n);
 
@@ -106,6 +107,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
     public:
         EnforcedHillClimbingBRRWSearch(
+                int random_seed,
                 const std::shared_ptr<Evaluator> &h,
                 PreferredUsage preferred_usage,
                 const std::vector<std::shared_ptr<Evaluator>> &preferred,

@@ -9,6 +9,8 @@
 #include "../task_utils/successor_generator.h"
 #include "../utils/logging.h"
 #include "../utils/system.h"
+#include "../utils/rng.h"
+#include "../utils/rng_options.h"
 
 #include <random>
 #include <chrono>
@@ -43,6 +45,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
     }
 
     EnforcedHillClimbingBRRWSearch::EnforcedHillClimbingBRRWSearch(
+            int random_seed,
             const shared_ptr<Evaluator> &h, PreferredUsage preferred_usage,
             const vector<shared_ptr<Evaluator>> &preferred,
             OperatorCost cost_type, int bound, double max_time,
@@ -50,10 +53,12 @@ namespace enforced_hill_climbing_beam_rrw_search {
             bool cluster,
             const string &description, utils::Verbosity verbosity)
             : SearchAlgorithm(cost_type, bound, max_time, description, verbosity),
+              rng(utils::get_rng(random_seed)),
               evaluator(h),
               preferred_operator_evaluators(preferred),
               preferred_usage(preferred_usage),
-              current_eval_context(state_registry.get_initial_state(), &statistics),
+              improvement_found(true),
+              current_eval_context(state_registry.get_initial_state(), &statistics), // can this be done in initialize(), or the body?  state_registry.get_initial_state() is called twice  [dawson]
               current_phase_start_g(-1),
               num_ehc_phases(0),
               last_num_expanded(-1),
@@ -80,7 +85,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
                         preferred_operator_evaluators.end();
 
         open_list = create_ehc_open_list_factory(
-                verbosity, use_preferred, preferred_usage)->create_edge_open_list();
+                verbosity, use_preferred, preferred_usage)->create_state_open_list();
 
         // Initialize the restart strategy based on enum
         if (restart_strategy == "luby") {
@@ -128,23 +133,34 @@ namespace enforced_hill_climbing_beam_rrw_search {
         current_phase_start_g = 0;
     }
 
-    void EnforcedHillClimbingBRRWSearch::insert_successor_into_open_list(
-            const EvaluationContext &eval_context,
+    bool EnforcedHillClimbingBRRWSearch::insert_successor_into_open_list(
+            EvaluationContext &eval_context,
             int parent_g,
             OperatorID op_id,
             bool preferred) {
         OperatorProxy op = task_proxy.get_operators()[op_id];
         int succ_g = parent_g + get_adjusted_cost(op);
         const State &state = eval_context.get_state();
-        EdgeOpenListEntry entry = make_pair(state.get_id(), op_id);
-        EvaluationContext new_eval_context(eval_context, succ_g, preferred, &statistics);
-        open_list->insert(new_eval_context, entry);
-        statistics.inc_generated_ops();
+        SearchNode node = search_space.get_node(state);
+
+        State succ_state = state_registry.get_successor_state(state, op);
+        statistics.inc_generated();
+        bool is_preferred = preferred;
+        SearchNode succ_node = search_space.get_node(succ_state);
+        EvaluationContext succ_eval_context(
+            succ_state, succ_g, is_preferred, &statistics);
+        statistics.inc_evaluated_states();
+        succ_node.open_new_node(node, op, get_adjusted_cost(op));
+        open_list->insert(succ_eval_context, succ_state.get_id());
+
+        return succ_eval_context.get_evaluator_value_or_infinity(evaluator.get())
+                < eval_context.get_evaluator_value_or_infinity(evaluator.get());
     }
 
-    void EnforcedHillClimbingBRRWSearch::expand(EvaluationContext &eval_context) {
+    bool EnforcedHillClimbingBRRWSearch::expand(EvaluationContext &eval_context) {
         SearchNode node = search_space.get_node(eval_context.get_state());
         int node_g = node.get_g();
+        bool improvement_found = false;
 
         ordered_set::OrderedSet<OperatorID> preferred_operators;
         if (use_preferred) {
@@ -157,7 +173,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
         if (use_preferred && preferred_usage == PreferredUsage::PRUNE_BY_PREFERRED) {
             for (OperatorID op_id : preferred_operators) {
-                insert_successor_into_open_list(
+                improvement_found = insert_successor_into_open_list(
                         eval_context, node_g, op_id, true);
             }
         } else {
@@ -169,13 +185,14 @@ namespace enforced_hill_climbing_beam_rrw_search {
             for (OperatorID op_id : successor_operators) {
                 bool preferred = use_preferred &&
                                  preferred_operators.contains(op_id);
-                insert_successor_into_open_list(
+                improvement_found = insert_successor_into_open_list(
                         eval_context, node_g, op_id, preferred);
             }
         }
 
         statistics.inc_expanded();
         node.close();
+        return improvement_found;
     }
 
     void EnforcedHillClimbingBRRWSearch::search() {
@@ -197,84 +214,44 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
 
     SearchStatus EnforcedHillClimbingBRRWSearch::step() {
-        last_num_expanded = statistics.get_expanded();
+        last_num_expanded = statistics.get_expanded();         // see line 324
         search_progress.check_progress(current_eval_context);
         if (check_goal_and_set_plan(current_eval_context.get_state())) {
             return SOLVED;
         }
 
-        expand(current_eval_context);
-        return ehcbrrw();
-    }
+        if (improvement_found) {
+            bool expansion_succeeeded = expand(current_eval_context);
+            if (expansion_succeeeded) {
+                StateID next_id = open_list->remove_min();
 
-    SearchStatus EnforcedHillClimbingBRRWSearch::ehcbrrw() {
-        return ehc();
-    }
+                // making a new eval_context here is kind of stupid
+                EvaluationContext eval_context(state_registry.lookup_state(next_id), &statistics);
+                current_eval_context = move(eval_context);
+                open_list->clear();
 
-    SearchStatus EnforcedHillClimbingBRRWSearch::ehc() {
-        std::mt19937 rng(std::chrono::system_clock::now().time_since_epoch().count());
-        // Do a single EHC phase basically one step looke ahead
-        while (!open_list->empty()) {
-            EdgeOpenListEntry entry = open_list->remove_min();
-            StateID parent_state_id = entry.first;
-            OperatorID last_op_id = entry.second;
-            OperatorProxy last_op = task_proxy.get_operators()[last_op_id];
+                ++num_ehc_phases;  
+                // if (d_counts.count(d) == 0) {
+                //     d_counts[d] = make_pair(0, 0);
+                // }
+                // pair<int, int> &d_pair = d_counts[d];
+                // d_pair.first += 1;
+                // d_pair.second += statistics.get_expanded() - last_num_expanded;
 
-            State parent_state = state_registry.lookup_state(parent_state_id);
-            SearchNode parent_node = search_space.get_node(parent_state);
-
-            // d: distance from initial node in this EHC phase
-            int d = parent_node.get_g() - current_phase_start_g +
-                    get_adjusted_cost(last_op);
-
-            if (parent_node.get_real_g() + last_op.get_cost() >= bound)
-                continue;
-
-            State state = state_registry.get_successor_state(parent_state, last_op);
-            statistics.inc_generated();
-
-            SearchNode node = search_space.get_node(state);
-
-            if (node.is_new()) {
-                EvaluationContext eval_context(state, &statistics);
-                reach_state(parent_state, last_op_id, state);
-                statistics.inc_evaluated_states();
-
-                if (eval_context.is_evaluator_value_infinite(evaluator.get())) {
-                    node.mark_as_dead_end();
-                    statistics.inc_dead_ends();
-                    continue;
-                }
-
-                int h = eval_context.get_evaluator_value(evaluator.get());
-                node.open_new_node(parent_node, last_op,
-                                   get_adjusted_cost(last_op));
-
-                if (h < current_eval_context.get_evaluator_value(evaluator.get())) {
-                    ++num_ehc_phases;
-                    if (d_counts.count(d) == 0) {
-                        d_counts[d] = make_pair(0, 0);
-                    }
-                    pair<int, int> &d_pair = d_counts[d];
-                    d_pair.first += 1;
-                    d_pair.second += statistics.get_expanded() - last_num_expanded;
-
-                    current_eval_context = move(eval_context);
-                    open_list->clear();
-                    current_phase_start_g = node.get_g();
-                    return IN_PROGRESS;
-                } else {
-//                    expand(eval_context);
-
-                }
+                const State &state = eval_context.get_state();
+                SearchNode node = search_space.get_node(state);
+                current_phase_start_g = node.get_g();
+            } else {
+                improvement_found = false;
             }
+            return IN_PROGRESS;
+        } else {
+            return rrw();
         }
+    }
 
-
-        // open list is empty..perform RWs or return no solution after enough trials
-
+    SearchStatus EnforcedHillClimbingBRRWSearch::rrw() { // why the wrapper?   [dawson]
         int current_hvalue = current_eval_context.get_evaluator_value(evaluator.get());
-        EvaluationContext eval_context = current_eval_context;
         int hvalue = current_hvalue;
         std::cout << "Entering RWs(" << beam_width << "): to beat: " << hvalue << endl;
         //int num_restarts = 1;
@@ -283,8 +260,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
         }
 
         if (beam_width == 1){
-
-
             do {
                 uint64_t restart_length;
                 if(r_strategy){
@@ -292,19 +267,18 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 }else{
                     restart_length = max_depth;
                 }
-                uint64_t timestep = 0;
-                eval_context = current_eval_context;
+                uint64_t timestep = 0; // 1. timestep is 0 [dawson] [infinite loop]
+                EvaluationContext eval_context = current_eval_context;
 
-                while (hvalue >= current_hvalue && timestep < restart_length) {
+                while (timestep < restart_length) { //2. timestep must be less than restart_length to exit [dawson] [infinite loop]
                     vector<OperatorID> ops;
                     successor_generator.generate_applicable_ops(eval_context.get_state(), ops);
 
-                    if (ops.size() == 0) {
-                        std::cout << "Pruned all operators -- doing a pseudo-restart" << endl;
-                        eval_context = current_eval_context;
+                    if (ops.size() == 0) { 
+                        std::cout << "Pruned all operators -- doing a pseudo-restart" << endl; // this gets caught in an infinite loop [dawson] [infinite loop]
+                        eval_context = current_eval_context; // 3. if current_eval_context gives no ops eval_context will continue being current_eval_context [dawson] [infinite loop]
                     } else {
-                        std::uniform_int_distribution<int> dist(0, ops.size() - 1);
-                        OperatorID random_op_id = ops[dist(rng)];
+                        OperatorID random_op_id = *rng->choose(ops);
                         const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
                         State state = state_registry.get_successor_state(eval_context.get_state(), random_op);
 
@@ -314,195 +288,185 @@ namespace enforced_hill_climbing_beam_rrw_search {
                         // Get the search node for the new state and ensure proper initialization
                         SearchNode successor_node = search_space.get_node(state);
                         SearchNode parent_node = search_space.get_node(eval_context.get_state());
-                        if (successor_node.is_new()) {
+                        if (successor_node.is_new()) { // do we want to open every new node? or just the path to the improving state?
                             successor_node.open_new_node(parent_node, random_op, parent_node.get_g() + get_adjusted_cost(random_op));
                         }
 
-                        eval_context = EvaluationContext(state, &statistics);  // Eval Context of successor
+                        EvaluationContext eval_context(state, &statistics);  // Eval Context of successor
                         statistics.inc_evaluated_states();  // Evaluating random state
-                        statistics.inc_expanded();  // Expanding current state
                         statistics.inc_generated();  // Only generating one (random) state
 
-                        hvalue = eval_context.get_evaluator_value(evaluator.get());
+                        hvalue = eval_context.get_evaluator_value(evaluator.get());  // 4. if (ops.size() == 0) is, hvalue never gets updated so step 5 never exits [dawson] [infinite loop]
+                        if (hvalue < current_hvalue)
+                            break;
                     }
                     ++timestep;
                 }
                 // cout << eval_context.get_state().get_id() << "(" << hvalue << ")" << endl << "---" << endl;
-            } while (hvalue >= current_hvalue);
-
-        }else {
-   // beam rrw
-State initial_beam_state = current_eval_context.get_state();
-vector<State> beam;
-beam.push_back(current_eval_context.get_state());
-
-do {
-    uint64_t restart_length;
-    
-    // Determine the restart length
-    if (r_strategy) {
-        restart_length = r_strategy->next_sequence_value();
-    } else {
-        restart_length = max_depth;
-    }
-
-    uint64_t timestep = 0;
-
-    while (timestep < restart_length) {
-        vector<pair<int, State>> evaluated_states;
-        vector<pair<State, State>> cluster_st;
-
-        // Explore each beam node
-        for (const State &current_state : beam) {
-            vector<OperatorID> ops;
-            successor_generator.generate_applicable_ops(current_state, ops);
-
-            if (ops.empty()) {
-                log << "[Dead End] No applicable operations for state ID: " << current_state.get_id() << ". Continuing..." << endl;
-                continue;
-            }
-
-            if (cluster) {
-                // Cluster mode: Select random successors from each beam node
-                for (int i = 0; i < beam_width && !ops.empty(); ++i) {
-                    std::uniform_int_distribution<int> dist(0, ops.size() - 1);
-                    OperatorID random_op_id = ops[dist(rng)];
-                    const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
-                    State next_state = state_registry.get_successor_state(current_state, random_op);
-
-                    reach_state(current_state, random_op_id, next_state);
-
-                    SearchNode successor_node = search_space.get_node(next_state);
-                    SearchNode parent_node = search_space.get_node(current_state);
-                    if (successor_node.is_new()) {
-                        successor_node.open_new_node(parent_node, random_op, parent_node.get_g() + get_adjusted_cost(random_op));
-                    }
-
-                    EvaluationContext new_eval_context(next_state, &statistics);
-                    statistics.inc_evaluated_states();
-                    statistics.inc_expanded();
-                    statistics.inc_generated();
-
-                    int h_value = new_eval_context.get_evaluator_value(evaluator.get());
-                    evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
-                    cluster_st.push_back(make_pair(current_state, next_state));
-
-                    ops.erase(ops.begin() + dist(rng));
-                }
-            } else {
-                // Non-cluster mode: Expand all successors
-                shuffle(ops.begin(), ops.end(), rng);
-                for (OperatorID op_id : ops) {
-                    const OperatorProxy op = task_proxy.get_operators()[op_id];
-                    State next_state = state_registry.get_successor_state(current_state, op);
-
-                    reach_state(current_state, op_id, next_state);
-
-                    SearchNode successor_node = search_space.get_node(next_state);
-                    SearchNode parent_node = search_space.get_node(current_state);
-                    if (successor_node.is_new()) {
-                        successor_node.open_new_node(parent_node, op, parent_node.get_g() + get_adjusted_cost(op));
-                    }
-
-                    EvaluationContext new_eval_context(next_state, &statistics);
-                    statistics.inc_evaluated_states();
-                    statistics.inc_expanded();
-                    statistics.inc_generated();
-
-                    int h_value = new_eval_context.get_evaluator_value(evaluator.get());
-                    evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
-                }
-            }
-        }
-        // If no valid successors are found, restart
-        if (evaluated_states.empty()) {
-            log << "[Restart] No valid successors found. Restarting EHC from the current context." << endl;
-            eval_context = current_eval_context;
-            break;
-        }
-
-        if (cluster) {
-            beam.clear();
-            unordered_set<StateID> seen_states;  // To track added states by their ID for fast lookup
-            seen_states.reserve(beam_width);
-
-            // Add one state from each cluster until beam_width is reached
-            size_t cluster_idx = 0;
-
-            // Add unique states from clusters
-            while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
-                State next_state = cluster_st[cluster_idx].second;
-                StateID next_state_id = next_state.get_id();
-                
-                // Add state if it hasn't been added before
-                if (seen_states.insert(next_state_id).second) {
-                    beam.push_back(std::move(next_state));
-                }
-                cluster_idx++;
-            }
-
-            // If beam is not full, add random unique states from evaluated_states
-            std::uniform_int_distribution<int> dist(0, evaluated_states.size() - 1);
-            while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
-                State next_state = evaluated_states[dist(rng)].second;
-                StateID next_state_id = next_state.get_id();
-                
-                // Only add if it's a unique state
-                if (seen_states.insert(next_state_id).second) {
-                    beam.push_back(std::move(next_state));
-                }
-
-                cluster_idx++;
-            }
+            } while (hvalue >= current_hvalue); // 5. hvalue must be less than current_hvalue to exit [dawson] [infinite loop]
 
         } else {
-            // Non-cluster: Clear and update the beam with best states
-            beam.clear();
-            // std::sort(evaluated_states.begin(), evaluated_states.end(),
-            //           [](const pair<int, State> &a, const pair<int, State> &b) {
-            //               return a.first < b.first;
-            //           });
-            for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
-                beam.push_back(std::move(evaluated_states[i].second));
-            }
-        }
+            // beam rrw
+            State initial_beam_state = current_eval_context.get_state();
+            vector<State> beam;
+            beam.push_back(current_eval_context.get_state());
 
-        // Check if we found a better state
-        if (!evaluated_states.empty()) {
-            std::sort(evaluated_states.begin(), evaluated_states.end(),
-                      [](const pair<int, State> &a, const pair<int, State> &b) {
-                          return a.first < b.first;
-                      });
-            int best_hvalue = evaluated_states.front().first;
-            if (best_hvalue < current_hvalue) {
-                log << "[Improvement] Found a better state with heuristic value: " << best_hvalue << endl;
-                current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
-                current_hvalue = best_hvalue;
-                open_list->clear();
-                return IN_PROGRESS;
-            }
-        }
+            do {
+                uint64_t restart_length;
+                
+                // Determine the restart length
+                if (r_strategy) {
+                    restart_length = r_strategy->next_sequence_value();
+                } else {
+                    restart_length = max_depth;
+                }
 
-        current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
-        timestep++;
-    }
+                uint64_t timestep = 0;
 
-    // Reset the beam to initial state after a restart
-    beam.clear();
-    beam.push_back(initial_beam_state);
+                while (timestep < restart_length) {
+                    vector<pair<int, State>> evaluated_states;
+                    vector<pair<State, State>> cluster_st;
 
-} while (hvalue >= current_hvalue);
+                    // Explore each beam node
+                    for (const State &current_state : beam) {
+                        vector<OperatorID> ops;
+                        successor_generator.generate_applicable_ops(current_state, ops);
 
+                        if (ops.empty()) {
+                            log << "[Dead End] No applicable operations for state ID: " << current_state.get_id() << ". Continuing..." << endl;
+                            continue;
+                        }
 
+                        if (cluster) {
+                            // Cluster mode: Select random successors from each beam node
+                            for (int i = 0; i < beam_width && !ops.empty(); ++i) {
+                                std::uniform_int_distribution<int> dist(0, ops.size() - 1);
+                                OperatorID random_op_id = ops[dist(rng)];
+                                const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
+                                State next_state = state_registry.get_successor_state(current_state, random_op);
 
+                                reach_state(current_state, random_op_id, next_state);
 
+                                SearchNode successor_node = search_space.get_node(next_state);
+                                SearchNode parent_node = search_space.get_node(current_state);
+                                if (successor_node.is_new()) {
+                                    successor_node.open_new_node(parent_node, random_op, parent_node.get_g() + get_adjusted_cost(random_op));
+                                }
 
+                                EvaluationContext new_eval_context(next_state, &statistics);
+                                statistics.inc_evaluated_states();
+                                statistics.inc_expanded(); // see line 324 [dawson]
+                                statistics.inc_generated();
 
+                                int h_value = new_eval_context.get_evaluator_value(evaluator.get());
+                                evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
+                                cluster_st.push_back(make_pair(current_state, next_state));
 
+                                ops.erase(ops.begin() + dist(rng));
+                            }
+                        } else {
+                            // Non-cluster mode: Expand all successors
+                            shuffle(ops.begin(), ops.end(), rng);
+                            for (OperatorID op_id : ops) {
+                                const OperatorProxy op = task_proxy.get_operators()[op_id];
+                                State next_state = state_registry.get_successor_state(current_state, op);
 
+                                reach_state(current_state, op_id, next_state);
 
+                                SearchNode successor_node = search_space.get_node(next_state);
+                                SearchNode parent_node = search_space.get_node(current_state);
+                                if (successor_node.is_new()) {
+                                    successor_node.open_new_node(parent_node, op, parent_node.get_g() + get_adjusted_cost(op));
+                                }
 
+                                EvaluationContext new_eval_context(next_state, &statistics);
+                                statistics.inc_evaluated_states();
+                                statistics.inc_expanded();  // see line 324 [dawson]
+                                statistics.inc_generated();
 
+                                int h_value = new_eval_context.get_evaluator_value(evaluator.get());
+                                evaluated_states.push_back(make_pair(h_value, std::move(next_state)));
+                            }
+                        }
+                    }
+                    // If no valid successors are found, restart
+                    if (evaluated_states.empty()) {
+                        log << "[Restart] No valid successors found. Restarting EHC from the current context." << endl;
+                        eval_context = current_eval_context;
+                        break;
+                    }
+
+                    if (cluster) {
+                        beam.clear();
+                        unordered_set<StateID> seen_states;  // To track added states by their ID for fast lookup
+                        seen_states.reserve(beam_width);
+
+                        // Add one state from each cluster until beam_width is reached
+                        size_t cluster_idx = 0;
+
+                        // Add unique states from clusters
+                        while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
+                            State next_state = cluster_st[cluster_idx].second;
+                            StateID next_state_id = next_state.get_id();
+                            
+                            // Add state if it hasn't been added before
+                            if (seen_states.insert(next_state_id).second) {
+                                beam.push_back(std::move(next_state));
+                            }
+                            cluster_idx++;
+                        }
+
+                        // If beam is not full, add random unique states from evaluated_states
+                        std::uniform_int_distribution<int> dist(0, evaluated_states.size() - 1);
+                        while (beam.size() < beam_width && cluster_idx < cluster_st.size()) {
+                            State next_state = evaluated_states[dist(rng)].second;
+                            StateID next_state_id = next_state.get_id();
+                            
+                            // Only add if it's a unique state
+                            if (seen_states.insert(next_state_id).second) {
+                                beam.push_back(std::move(next_state));
+                            }
+
+                            cluster_idx++;
+                        }
+
+                    } else {
+                        // Non-cluster: Clear and update the beam with best states
+                        beam.clear();
+                        // std::sort(evaluated_states.begin(), evaluated_states.end(),
+                        //           [](const pair<int, State> &a, const pair<int, State> &b) {
+                        //               return a.first < b.first;
+                        //           });
+                        for (int i = 0; i < beam_width && i < evaluated_states.size(); ++i) {
+                            beam.push_back(std::move(evaluated_states[i].second));
+                        }
+                    }
+
+                    // Check if we found a better state
+                    if (!evaluated_states.empty()) {
+                        std::sort(evaluated_states.begin(), evaluated_states.end(),
+                                [](const pair<int, State> &a, const pair<int, State> &b) {
+                                    return a.first < b.first;
+                                });
+                        int best_hvalue = evaluated_states.front().first;
+                        if (best_hvalue < current_hvalue) {
+                            log << "[Improvement] Found a better state with heuristic value: " << best_hvalue << endl;
+                            current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
+                            current_hvalue = best_hvalue;
+                            open_list->clear();
+                            return IN_PROGRESS;
+                        }
+                    }
+
+                    current_eval_context = EvaluationContext(evaluated_states.front().second, &statistics);
+                    timestep++;
+                }
+
+                // Reset the beam to initial state after a restart
+                beam.clear();
+                beam.push_back(initial_beam_state);
+
+            } while (hvalue >= current_hvalue);
         }
 
 
@@ -527,7 +491,6 @@ do {
         current_eval_context = eval_context;
         return IN_PROGRESS;
     }
-
 
     SearchStatus EnforcedHillClimbingBRRWSearch::random_restart_walk() {
 
@@ -555,15 +518,15 @@ do {
             << static_cast<double>(statistics.get_expanded()) / num_ehc_phases
             << endl;
 
-        for (auto count: d_counts) {
-            int depth = count.first;
-            int phases = count.second.first;
-            assert(phases != 0);
-            int total_expansions = count.second.second;
-            log << "EHC phases of depth " << depth << ": " << phases
-                << " - Avg. Expansions: "
-                << static_cast<double>(total_expansions) / phases << endl;
-        }
+        // for (auto count: d_counts) {
+        //     int depth = count.first;
+        //     int phases = count.second.first;
+        //     assert(phases != 0);
+        //     int total_expansions = count.second.second;
+        //     log << "EHC phases of depth " << depth << ": " << phases
+        //         << " - Avg. Expansions: "
+        //         << static_cast<double>(total_expansions) / phases << endl;
+        // }
     }
 
     RestartStrategy::RestartStrategy()
@@ -655,7 +618,7 @@ do {
                     "cluster",
                     "Cluster mode for beam search.",
                     "false");
-
+            utils::add_rng_options_to_feature(*this);
             add_search_algorithm_options_to_feature(*this, "ehcbrrw");
         }
 
@@ -667,6 +630,7 @@ do {
             );
 
             return make_shared<EnforcedHillClimbingBRRWSearch>(
+                    utils::get_rng_arguments_from_options(opts),
                     opts.get<shared_ptr<Evaluator>>("h"),
                     opts.get<PreferredUsage>("preferred_usage"),
                     opts.get_list<shared_ptr<Evaluator>>("preferred"),
