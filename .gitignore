@@ -1,3 +1,5 @@
+.vscode/
+
 __pycache__/
 /output.sas
 /sas_plan

@@ -87,14 +87,12 @@ namespace enforced_hill_climbing_beam_rrw_search {
         void expand(EvaluationContext &eval_context);
         void reach_state(
                 const State &parent, OperatorID op_id, const State &state);
-        SearchStatus ehcbrrw();
 
         OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
 
         SearchStatus random_restart_walk();
         SearchStatus beam_search(std::mt19937 &rng);
-        SearchStatus ehc_random_walk_search();
-        SearchStatus ehc();
+        SearchStatus rrw();
 
         long luby_sequence(long n);
 
