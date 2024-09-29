@@ -251,7 +251,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
                 if (h < current_eval_context.get_evaluator_value(evaluator.get())) {
                     ++num_ehc_phases;
-                    update_d_counts(d);
                     current_eval_context = std::move(eval_context);
                     open_list->clear();
                     current_phase_start_g = node.get_g();
@@ -306,7 +305,10 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     }
 
                     eval_context = EvaluationContext(state, &statistics);
-                    update_statistics();
+                    statistics.inc_evaluated_states();
+                    statistics.inc_generated();
+                    statistics.inc_expanded();
+                    statistics.inc_generated();
 
                     hvalue = eval_context.get_evaluator_value(evaluator.get());
 
