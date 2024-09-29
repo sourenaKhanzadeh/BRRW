@@ -204,10 +204,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
         }
 
         expand(current_eval_context);
-        return ehcbrrw();
-    }
-
-    SearchStatus EnforcedHillClimbingBRRWSearch::ehcbrrw() {
         return ehc();
     }
 
@@ -306,9 +302,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
                     eval_context = EvaluationContext(state, &statistics);
                     statistics.inc_evaluated_states();
-                    statistics.inc_generated();
-                    statistics.inc_expanded();
-                    statistics.inc_generated();
 
                     hvalue = eval_context.get_evaluator_value(evaluator.get());
 
@@ -332,7 +325,11 @@ namespace enforced_hill_climbing_beam_rrw_search {
             State initial_beam_state = eval_context.get_state();
             vector<State> active_beam;
             vector<State> active_frontier;
-            active_beam.push_back(initial_beam_state);
+            if(const_level_beam.empty()) {
+                active_beam.push_back(initial_beam_state);
+            }else{
+                active_beam = const_level_beam;
+            }
 
             bool improvement_found = false;
             int best_frontier_hvalue = current_hvalue;
@@ -347,12 +344,9 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 restart_length = max_depth;
             }
 
-            uint64_t timestep = 0;
+            uint64_t timestep = const_level_beam_depth;
 
             while (timestep < restart_length) {
-                // vector<pair<int, State>> evaluated_states;
-                // vector<pair<State, State>> cluster_st;
-
                 // Explore each beam node
                 for (const State &current_state : active_beam) {
                     vector<OperatorID> ops;
@@ -383,11 +377,17 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     }
                 }
 
+                // cout << "frontier size: " << active_frontier.size() << " beam size: " << active_beam.size() << " depth: " << const_level_beam_depth << " timestep: " << timestep << endl;
                 // If no valid successors are found, restart
                 if (active_frontier.empty()) {
                     log << "[Restart] No valid successors found. Restarting EHC from the current context." << endl;
                     eval_context = current_eval_context;
                     break;
+                }
+
+                if (active_frontier.size() < beam_width) {
+                    const_level_beam = active_frontier;
+                    const_level_beam_depth++;
                 }
 
                 // Non-cluster: Clear and update the beam with best states
@@ -409,6 +409,8 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 if (improvement_found) {
                     EvaluationContext new_eval_context(active_frontier[best_i], &statistics);
                     current_eval_context = std::move(new_eval_context);
+                    const_level_beam.clear();
+                    const_level_beam_depth = 0;
                     return IN_PROGRESS;
                 }
 
@@ -420,16 +422,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
             active_beam.clear();
         } 
     }
-
-    SearchStatus EnforcedHillClimbingBRRWSearch::random_restart_walk() {
-
-    }
-
-
-    SearchStatus EnforcedHillClimbingBRRWSearch::beam_search(std::mt19937 &rng) {
-
-    }
-
 
     OperatorID EnforcedHillClimbingBRRWSearch::sample_random_operator(const State &state, std::mt19937 &rng) {
         vector<OperatorID> applicable_ops;
