@@ -103,18 +103,6 @@ namespace enforced_hill_climbing_beam_rrw_search {
         State sample_random_successor(const State &state, OperatorID op_id, std::mt19937 &rng);
         SearchStatus perform_single_walk(std::mt19937& rng, int current_hvalue);
         SearchStatus perform_beam_walk(std::mt19937& rng, int current_hvalue);
-        
-        // update d counts
-        void update_d_counts(int d);
-        void update_statistics();
-         void explore_cluster_mode(const State& current_state, std::vector<OperatorID>& ops, std::mt19937& rng, std::vector<std::pair<int, State>>& evaluated_states, std::vector<std::pair<State, State>>& cluster_st);
-        void explore_non_cluster_mode(const State& current_state, std::vector<OperatorID>& ops, std::mt19937& rng, std::vector<std::pair<int, State>>& evaluated_states);
-        bool check_for_improvement(const std::vector<std::pair<int, State>>& evaluated_states, int current_hvalue);
-        void update_beam(std::vector<State>& beam, const std::vector<std::pair<int, State>>& evaluated_states, const std::vector<std::pair<State, State>>& cluster_st, std::mt19937& rng);
-        void update_beam_cluster_mode(std::vector<State>& beam, const std::vector<std::pair<int, State>>& evaluated_states, const std::vector<std::pair<State, State>>& cluster_st, std::mt19937& rng);
-        void update_beam_non_cluster_mode(std::vector<State>& beam, const std::vector<std::pair<int, State>>& evaluated_states);
-        void process_successor_state(const State& current_state, OperatorID op_id, const OperatorProxy& op, State& next_state, std::vector<std::pair<int, State>>& evaluated_states);
-        
 
     protected:
         virtual void initialize() override;
