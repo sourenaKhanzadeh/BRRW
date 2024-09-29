@@ -76,6 +76,9 @@ namespace enforced_hill_climbing_beam_rrw_search {
         int num_ehc_phases;
         int last_num_expanded;
 
+        std::vector<State> const_level_beam;
+        int const_level_beam_depth = 0;
+
         std::unique_ptr<RestartStrategy> r_strategy;
         std::string restart_strategy;
 
@@ -87,18 +90,18 @@ namespace enforced_hill_climbing_beam_rrw_search {
         void expand(EvaluationContext &eval_context);
         void reach_state(
                 const State &parent, OperatorID op_id, const State &state);
-        SearchStatus ehcbrrw();
 
-        OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
 
-        SearchStatus random_restart_walk();
-        SearchStatus beam_search(std::mt19937 &rng);
-        SearchStatus ehc_random_walk_search();
         SearchStatus ehc();
 
         long luby_sequence(long n);
 
         utils::CountdownTimer *timer;
+        std::vector<OperatorID> sample_random_operators(const State &state, std::mt19937 &rng, int num_samples);
+        OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
+        State sample_random_successor(const State &state, OperatorID op_id, std::mt19937 &rng);
+        SearchStatus perform_single_walk(std::mt19937& rng, int current_hvalue);
+        SearchStatus perform_beam_walk(std::mt19937& rng, int current_hvalue);
 
     protected:
         virtual void initialize() override;
