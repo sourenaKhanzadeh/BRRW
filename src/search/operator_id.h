@@ -30,6 +30,7 @@ public:
     explicit OperatorID(int index)
         : index(index) {
     }
+    OperatorID() = default;
 
     static const OperatorID no_operator;
 

@@ -75,11 +75,11 @@ public:
 
 
 class SearchSpace {
-    PerStateInformation<SearchNodeInfo> search_node_infos;
 
     StateRegistry &state_registry;
     utils::LogProxy &log;
 public:
+    PerStateInformation<SearchNodeInfo> search_node_infos;
     SearchSpace(StateRegistry &state_registry, utils::LogProxy &log);
 
     SearchNode get_node(const State &state);

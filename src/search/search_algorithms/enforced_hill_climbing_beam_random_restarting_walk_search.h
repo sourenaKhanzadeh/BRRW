@@ -100,8 +100,10 @@ namespace enforced_hill_climbing_beam_rrw_search {
         std::vector<OperatorID> sample_random_operators(const State &state, std::mt19937 &rng, int num_samples);
         OperatorID sample_random_operator(const State &state, std::mt19937 &rng);
         State sample_random_successor(const State &state, OperatorID op_id, std::mt19937 &rng);
-        SearchStatus perform_single_walk(std::mt19937& rng, int current_hvalue);
-        SearchStatus perform_beam_walk(std::mt19937& rng, int current_hvalue);
+        SearchStatus perform_single_walk(std::mt19937& rng, int current_hvalue, StateRegistry &state_registry, SearchSpace &search_space);
+        SearchStatus perform_beam_walk(std::mt19937& rng, int current_hvalue, StateRegistry &state_registry, SearchSpace &search_space);
+
+        std::unordered_map<StateID, std::pair<StateID, OperatorID>> path_dependent;
 
     protected:
         virtual void initialize() override;

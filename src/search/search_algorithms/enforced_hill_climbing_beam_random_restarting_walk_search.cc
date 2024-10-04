@@ -208,8 +208,20 @@ namespace enforced_hill_climbing_beam_rrw_search {
     }
 
     SearchStatus EnforcedHillClimbingBRRWSearch::ehc() {
+        cout << "Starting EHC" << endl;
         std::mt19937 rng(std::chrono::system_clock::now().time_since_epoch().count());
-        
+        StateRegistry local_registry(task_proxy);
+        SearchSpace local_space(local_registry, log);
+        std::unordered_map<StateID, std::pair<StateID, OperatorID>> state_map;
+
+        for (pair<StateID, pair<StateID, OperatorID>> pth: path_dependent) {
+            StateID current_state_id = pth.first;
+            StateID parent_state_id = pth.second.first;
+            OperatorID last_op_id = pth.second.second;
+            State parent_state = local_registry.lookup_state(parent_state_id);
+            State state = local_registry.lookup_state(current_state_id);
+            OperatorProxy last_op = task_proxy.get_operators()[last_op_id];
+        }
         // Single EHC phase (one step look-ahead)
         while (!open_list->empty()) {
             EdgeOpenListEntry entry = open_list->remove_min();
@@ -217,8 +229,8 @@ namespace enforced_hill_climbing_beam_rrw_search {
             OperatorID last_op_id = entry.second;
             OperatorProxy last_op = task_proxy.get_operators()[last_op_id];
 
-            State parent_state = state_registry.lookup_state(parent_state_id);
-            SearchNode parent_node = search_space.get_node(parent_state);
+            State parent_state = local_registry.lookup_state(parent_state_id);
+            SearchNode parent_node = local_space.get_node(parent_state);
 
             int d = parent_node.get_g() - current_phase_start_g + get_adjusted_cost(last_op);
 
@@ -226,10 +238,17 @@ namespace enforced_hill_climbing_beam_rrw_search {
                 continue;
             }
 
-            State state = state_registry.get_successor_state(parent_state, last_op);
+            State state = local_registry.get_successor_state(parent_state, last_op);
+            auto result = state_map.emplace(state.get_id(), std::make_pair(parent_state_id, last_op_id));
+            if (!result.second) {
+                // Update the existing entry if the new path is better
+                if (state_map.at(state.get_id()).first != parent_state_id) {
+                    state_map[state.get_id()] = std::make_pair(parent_state_id, last_op_id);
+                }
+            }
             statistics.inc_generated();
 
-            SearchNode node = search_space.get_node(state);
+            SearchNode node = local_space.get_node(state);
 
             if (node.is_new()) {
                 EvaluationContext eval_context(state, &statistics);
@@ -244,10 +263,37 @@ namespace enforced_hill_climbing_beam_rrw_search {
 
                 int h = eval_context.get_evaluator_value(evaluator.get());
                 node.open_new_node(parent_node, last_op, get_adjusted_cost(last_op));
-
+                cout << "h: " << h << " current_eval_context: " << current_eval_context.get_evaluator_value(evaluator.get()) << endl;
                 if (h < current_eval_context.get_evaluator_value(evaluator.get())) {
+                    // walk the path from state_map to initial state and mark all operators as reached
+                    StateID current_state_id = state.get_id();
+                    while (state_map.find(current_state_id) != state_map.end()) {
+                        StateID parent_state_id = state_map[current_state_id].first;
+                        OperatorID op_id = state_map[current_state_id].second;
+                        OperatorProxy op = task_proxy.get_operators()[op_id];
+                        // get parent parent to form the parent state if parent exist
+                        if(state_map.find(parent_state_id) != state_map.end()){
+                            parent_state_id = state_map[parent_state_id].first;
+                            StateID parent_parent_state_id = state_map[parent_state_id].first;
+                            State parent_parent_state = state_registry.lookup_state(parent_parent_state_id);
+                            parent_state = state_registry.get_successor_state(parent_parent_state, op);
+                            state_registry.get_successor_state(parent_state, op);
+                        }
+                        else{
+                            parent_state = state_registry.get_successor_state(state_registry.lookup_state(parent_state_id), op);
+                        }
+
+                        if(std::find(path_dependent.begin(), path_dependent.end(), op_id) == path_dependent.end()){
+                            path_dependent[current_state_id] = std::make_pair(parent_state_id, op_id);
+                        }
+                        current_state_id = parent_state_id;
+                    }
+                    // State reg_state = state_registry.get_successor_state(parent_state, last_op);
+                    // EvaluationContext new_eval_context(reg_state, &statistics);
+
                     ++num_ehc_phases;
                     current_eval_context = std::move(eval_context);
+
                     open_list->clear();
                     current_phase_start_g = node.get_g();
                     return IN_PROGRESS;
@@ -264,11 +310,10 @@ namespace enforced_hill_climbing_beam_rrw_search {
         if (r_strategy) {
             r_strategy->reset_sequence();
         }
-
-        return beam_width == 1 ? perform_single_walk(rng, current_hvalue) : perform_beam_walk(rng, current_hvalue);
+        return beam_width == 1 ? perform_single_walk(rng, current_hvalue, local_registry, local_space) : perform_beam_walk(rng, current_hvalue, local_registry, local_space);
     }
 
-    SearchStatus EnforcedHillClimbingBRRWSearch::perform_single_walk(std::mt19937& rng, int current_hvalue) {
+    SearchStatus EnforcedHillClimbingBRRWSearch::perform_single_walk(std::mt19937& rng, int current_hvalue, StateRegistry &registry, SearchSpace &space) {
         EvaluationContext best_eval_context = current_eval_context;
         int best_hvalue = current_hvalue;
 
@@ -290,12 +335,11 @@ namespace enforced_hill_climbing_beam_rrw_search {
                     std::uniform_int_distribution<int> dist(0, ops.size() - 1);
                     OperatorID random_op_id = ops[dist(rng)];
                     const OperatorProxy random_op = task_proxy.get_operators()[random_op_id];
-                    State state = state_registry.get_successor_state(eval_context.get_state(), random_op);
-
+                    State state = registry.get_successor_state(eval_context.get_state(), random_op);
                     reach_state(eval_context.get_state(), random_op_id, state);
 
-                    SearchNode successor_node = search_space.get_node(state);
-                    SearchNode parent_node = search_space.get_node(eval_context.get_state());
+                    SearchNode successor_node = space.get_node(state);
+                    SearchNode parent_node = space.get_node(eval_context.get_state());
                     if (successor_node.is_new()) {
                         successor_node.open_new_node(parent_node, random_op, parent_node.get_g() + get_adjusted_cost(random_op));
                     }
@@ -319,7 +363,7 @@ namespace enforced_hill_climbing_beam_rrw_search {
         return IN_PROGRESS;
     }
 
-    SearchStatus EnforcedHillClimbingBRRWSearch::perform_beam_walk(std::mt19937& rng, int current_hvalue) {
+    SearchStatus EnforcedHillClimbingBRRWSearch::perform_beam_walk(std::mt19937& rng, int current_hvalue, StateRegistry &registry, SearchSpace &space) {
         EvaluationContext eval_context = current_eval_context;
         while (true) {
             State initial_beam_state = eval_context.get_state();

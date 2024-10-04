@@ -21,8 +21,8 @@ class StateID {
     }
 
     // No implementation to prevent default construction
-    StateID();
 public:
+    StateID() = default;
     ~StateID() {
     }
 
